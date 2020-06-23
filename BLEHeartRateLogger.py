@@ -25,9 +25,21 @@ import sqlite3
 import pexpect
 import argparse
 import configparser
+import rospy
+from std_msgs.msg import String
 
 logging.basicConfig(format="%(asctime)-15s  %(message)s")
 log = logging.getLogger("BLEHeartRateLogger")
+rospy.init_node("blmuglycode")
+pub = rospy.Publisher("/hrm", String, queue_size=1)
+rospy.sleep(0.5)
+MAC = "DC:E4:74:20:44:61"
+
+def rosinfo(info):
+    log.info(info)
+    print(info)
+    msg = String(info)
+    pub.publish(msg)
 
 
 def parse_args():
@@ -150,7 +162,7 @@ def get_ble_hr_mac():
     """
 
     while 1:
-        log.info("Trying to find a BLE device")
+        rosinfo("Trying to find a BLE device")
         hci = pexpect.spawn("hcitool lescan")
         try:
             hci.expect("([0-9A-F]{2}[:-]){5}([0-9A-F]{2})", timeout=20)
@@ -163,7 +175,7 @@ def get_ble_hr_mac():
             continue
 
         except KeyboardInterrupt:
-            log.info("Received keyboard interrupt. Quitting cleanly.")
+            rosinfo("Received keyboard interrupt. Quitting cleanly.")
             hci.close()
             return None
 
@@ -196,7 +208,7 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
     while retry:
 
         while 1:
-            log.info("Establishing connection to " + addr)
+            rosinfo("Establishing connection to " + addr)
             gt = pexpect.spawn(gatttool + " -b " + addr + " -t random --interactive")
             if debug_gatttool:
                 gt.logfile = sys.stdout
@@ -210,11 +222,11 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
                     gt.expect(r"\[LE\]>", timeout=30)
 
             except pexpect.TIMEOUT:
-                log.info("Connection timeout. Retrying.")
+                rosinfo("Connection timeout. Retrying.")
                 continue
 
             except KeyboardInterrupt:
-                log.info("Received keyboard interrupt. Quitting cleanly.")
+                rosinfo("Received keyboard interrupt. Quitting cleanly.")
                 retry = False
                 break
             break
@@ -222,14 +234,14 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
         if not retry:
             break
 
-        log.info("Connected to " + addr)
+        rosinfo("Connected to " + addr)
 
         if check_battery:
             gt.sendline("char-read-uuid 00002a19-0000-1000-8000-00805f9b34fb")
             try:
                 gt.expect("value: ([0-9a-f]+)")
                 battery_level = gt.match.group(1)
-                log.info("Battery level: " + str(int(battery_level, 16)))
+                rosinfo("Battery level: " + str(int(battery_level, 16)))
 
             except pexpect.TIMEOUT:
                 log.error("Couldn't read battery level.")
@@ -286,7 +298,7 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
                 break
 
             except KeyboardInterrupt:
-                log.info("Received keyboard interrupt. Quitting cleanly.")
+                rosinfo("Received keyboard interrupt. Quitting cleanly.")
                 retry = False
                 break
 
@@ -305,7 +317,7 @@ def main(addr=None, sqlfile=None, gatttool="gatttool", check_battery=False, hr_h
             log.debug(res)
 
             if sqlfile is None:
-                log.info("Heart rate: " + str(res["hr"]))
+                rosinfo("Heart rate: " + str(res["hr"]))
                 continue
 
             # Push the data to the database
@@ -339,8 +351,9 @@ def cli():
         log.setLevel(logging.DEBUG)
     else:
         log.setLevel(logging.INFO)
-
-    main(args.m, args.o, args.g, args.b, args.H, args.d)
+    #XXX setting default mac
+    main(MAC, args.o, args.g, args.b, args.H, args.d)
+    #main(args.m, args.o, args.g, args.b, args.H, args.d)
 
 
 if __name__ == "__main__":
